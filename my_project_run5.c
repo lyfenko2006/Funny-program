@@ -11,6 +11,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+int send_test_to_file(char *buf, int size_buf, char *file_path);
+int recv_test_from_file(char *file_path);
+
 enum
 {
     COUNT_SERVICE_ARG = 5
@@ -177,24 +180,56 @@ read_input(int *len_save_test)                        //ввод данных, �
     return save_test;
 }
 
+long long total_size(char **arr1, int size_arr1, char *arr2, int size_arr2)
+{
+    long long res = 0;
+    res += sizeof(size_arr1);
+    for (int i = 0; i < size_arr1; i++) {
+        res += strlen(arr1[i]) + 1;
+    }
+    res += sizeof(size_arr2);
+    res += strlen(arr2) + 1;
+    return res;
+}
+
 void
 save_test_in_file(char *file_path, char **my_argv, int argc, char *save_test, int size_save_test)
 {
-    int fd = open(file_path, O_WRONLY | O_CREAT | O_APPEND, 0666);
-    write(fd, &size_save_test, sizeof(int));
-    printf("%d\n", argc);
-    write(fd, &argc, sizeof(int));
-    for (int i = 0; i < size_save_test; i++) {
-        write(fd, &save_test[i], sizeof(save_test[i]));
+    long long size = total_size(my_argv, argc, save_test, size_save_test);
+    char *buf = malloc(size);
+
+    char *temp = (char *) &size_save_test;
+    for (int i = 0; i < sizeof(size_save_test); i++) {
+        buf[i] = temp[i];
     }
+    //printf("%hhx%hhx%hhx%hhx\n", buf[0], buf[1], buf[2], buf[3]);
+    temp = (char *) &argc;
+    for (int i = sizeof(size_save_test); i < sizeof(argc) + sizeof(size_save_test); i++) {
+        buf[i] = temp[i - sizeof(size_save_test)];
+    }
+    //printf("%s\n", buf);
+    //printf("%hhx%hhx%hhx%hhx\n", buf[0], buf[1], buf[2], buf[3]);
+    //printf("\n");
+    //printf("%hhx%hhx%hhx%hhx\n", buf[4], buf[5], buf[6], buf[7]);
+    //buf[sizeof(size_save_test) + sizeof(argc)] = '\0';
+    int size_num = sizeof(size_save_test) + sizeof(argc);
+    for (int i = size_num; i < size_save_test + size_num; i++) {
+        buf[i] = save_test[i - size_num];
+    }
+
+    buf[size_save_test + size_num] = '\0';
+    //printf("%hhx%hhx%hhx%hhx\n", buf[4], buf[5], buf[6], buf[7]);
+    //printf("%s\n", buf);
     for (int i = 1; i < argc + 1; i++) {
-        for (int j = 0; my_argv[i][j] != '\0'; j++) {
-            write(fd, &my_argv[i][j], sizeof(my_argv[i][j]));
-        }
-        char null_term = '\0';
-        write(fd, &null_term, sizeof(char));
+        strcat(buf + size_num + size_save_test, my_argv[i]);
     }
-    close(fd);
+
+    //printf("%hhx%hhx%hhx%hhx\n", buf[10], buf[11], buf[12], buf[13]);
+    //printf( "%d", size);
+    if (send_test_to_file(buf, size, file_path) != 0) {
+        fprintf(stderr, "error writing to file\n");
+        exit(1);
+    }
 }
 
 char **
@@ -248,7 +283,9 @@ main(int argc, char *argv[])
     int fd;
 
     if (strcmp(argv[3], "-t") == 0) {
-        fd = open(argv[4], O_RDONLY);
+        fd = recv_test_from_file(argv[4]);
+        //printf("%d\n", fd);
+        //fd = open(argv[4], O_RDONLY);
     }
 
     while (status) {
